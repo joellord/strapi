@@ -1,0 +1,41 @@
+<html>
+  <head>
+    <title>Strapi Blog</title>
+  </head>
+
+  <body>
+    <h1>Welcome to my blog</h1>
+    <div id="content">
+
+    </div>
+    <script type="text/javascript" src="./config.js"></script>
+    <script type="text/javascript">
+    
+    window.addEventListener("DOMContentLoaded", e => {
+      console.log("Loading content from Strapi");
+
+      const BASE_URL = config.BASE_URL;
+
+      const BLOG_POSTS_URL = `${BASE_URL}/posts`;
+
+      fetch(BLOG_POSTS_URL).then(resp => resp.json()).then(posts => {
+        for(let i = 0; i < posts.length; i++) {
+          let postData = posts[i];
+          let post = document.createElement("div");
+          let title = document.createElement("h2");
+          title.innerText = postData.title;
+          let author = document.createElement("h3");
+          author.innerText = `${postData.admin_user.firstname} ${postData.admin_user.lastname} -- ${postData.publish_date}`;
+          let content = document.createElement("div");
+          content.innerText = postData.content;
+          post.appendChild(title);
+          post.appendChild(author);
+          post.appendChild(content);
+          document.querySelector("#content").appendChild(post);
+        }
+      });
+    });
+
+    </script>
+  </body>
+</html>

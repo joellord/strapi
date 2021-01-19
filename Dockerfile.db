@@ -1,0 +1,7 @@
+FROM postgres
+WORKDIR /var/lib/postgresql/data
+COPY ./data .
+ENV POSTGRES_DB=strapi
+ENV POSTGRES_USER=strapi
+ENV POSTGRES_PASSWORD=strapi
+

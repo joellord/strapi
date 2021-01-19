@@ -1,0 +1,5 @@
+FROM nginx:1.17
+WORKDIR /usr/share/nginx/html
+COPY ./front/*.* .
+RUN sed s/BASE_URL\:\ \"[a-zA-Z0-9:\/]*\"/BASE_URL\:\ \"\$BASE_URL\"/g config.js > config.new.js && mv config.new.js config.js
+ENTRYPOINT cat config.js |  envsubst | tee config.new.js && mv config.new.js config.js && nginx -g 'daemon off;'
