@@ -43,6 +43,8 @@ Once you see a message saying that your Strapi server is strated, you can go to 
 
 Once your administrator is created, go ahead a create a new content-type and make is publicly available. You can find a full tutorial on how to do so on the [Strapi website](https://www.youtube.com/watch?v=VC9X9O5OFyc)
 
+For some content that will work with the next step, you can create a *Content Type* for _Posts_. It will have four fields: _title_, _author_ (a relationship to Users), _published date_ and _content_.
+
 If you want to stop the logs in your console, use `Ctrl-C`.
 
 ### Front-end
@@ -111,4 +113,124 @@ window.addEventListener("DOMContentLoaded", e => {
 Now that all the files are created, go to [http://localhost:8888](http://localhost:8888) to see your application. You should now see your fancy UI serving content from Strapi.
 
 ## Production
-Once you are ready to deploy your application, you will need to create your own containers that contain all the necessary files and data. Those containers and what will end up going live on the web.
+Once you are ready to deploy your application, you will need to create your own containers that contain all the necessary files and data. Those containers are what will end up going live on the web.
+
+For each container, you will need to create a Dockerfile. Those files will be used to create your containers with the actual content and you will then be able to deploy those containers to Kubernetes.
+
+### Database
+If you do not already have a database in production, you will need one seeded with the current content. To do so, create a `Dockerfile.db` file. This new image will be based on postgres so you can start with a `FROM postgres` command. Then change the working directory to `/var/lib/postgresql/data` and all the current data from your local file system into the container with `COPY ./data .`. Finally, you will need to set the environment variables for the database name, user and password.
+
+_Dockerfile.db_
+```
+FROM postgres
+WORKDIR /var/lib/postgresql/data
+COPY ./data .
+ENV POSTGRES_DB=strapi
+ENV POSTGRES_USER=strapi
+ENV POSTGRES_PASSWORD=strapi
+```
+
+### Strapi back-end
+Similar to what was done for the database, you will need to create a `Dockefile.strapi` to build your container.
+
+To do so, start from the strapi base image `FROM strapi/strapi`. Change the working directory to `/src/app` and copy all the local files into the container. Next, expose the port 1337 and set all your environment variables. Don't forget to add an environment variable for `NODE_ENV=production`. Finally, execture the `npm run build` to build all the production resources and use the `ENTRYPOINT` command to start the back-end when the container is started. 
+
+_Dockerfile.strapi_
+```
+FROM strapi/strapi
+WORKDIR /srv/app
+COPY ./app .
+EXPOSE 1337
+ENV NODE_ENV=production
+ENV DATABASE_CLIENT=postgres 
+ENV DATABASE_NAME=strapi
+ENV DATABASE_HOST=strapi-db
+ENV DATABASE_PORT=5432
+ENV DATABASE_USERNAME=strapi
+ENV DATABASE_PASSWORD=strapi
+RUN npm run build
+ENTRYPOINT npm start
+```
+
+### Front-end
+For the front-end, you'll have to do a bit of bash scripting in order to be able to use an environment variable to specify the URL of your Strapi server. 
+
+First, start with the `nginx:1.17` base image and change the working directory to `/usr/share/nginx/html`. In there, copy all the files from your local system into the container.
+
+The next step involves using `sed` to change the value of what is between the double quotes following the key `BASE_URL` and change that value to `$BASE_URL`. The result is pipes into a new file called config.new.js. Finally, the file is renamed config.js to overwrite the original file. 
+
+The result inside the container will be a new config.js file that looks like this while leaving the original file in your local file system intact.
+
+```
+const config = {
+  BASE_URL: "$BASE_URL"
+}
+```
+
+Finally, you will need to use `envsubst` to change the value of $BASE_URL to the actual value from the environment variable. All of this is done in the `ENTRYPOINT` so it only gets done when someone uses a Docker run. The benefit of doing it in an Entrypoint as opposed to a `RUN` is that it'll enable you to specify different values for the base URL based on where you are running this container.
+
+To do so, you can use a `cat` command to pipe the config.js file into `envsubst`. The output is then piped to `tee` to create a new `config.new.js` file. That file is then renamed and overwrites the previous config file. Finally, the `nginx -g 'daemon off;'` command is used to start the Nginx server.
+
+_Dockerfile.front_
+```
+FROM nginx:1.17
+WORKDIR /usr/share/nginx/html
+COPY ./front/*.* .
+RUN sed s/BASE_URL\:\ \"[a-zA-Z0-9:\/]*\"/BASE_URL\:\ \"\$BASE_URL\"/g config.js > config.new.js && mv config.new.js config.js
+ENTRYPOINT cat config.js |  envsubst | tee config.new.js && mv config.new.js config.js && nginx -g 'daemon off;'
+```
+
+### Build the containers
+Now that you have all your Dockerfiles ready, you can build those containers and push them to your favourite image registry. Don't forget to change the name of your images to use your username for that registry.
+
+```
+docker build -t <username>/strapi-db -f Dockerfile.db .
+docker build -t <username>/strapi-front -f Dockerfile.front .
+docker build -t <username>/strapi-back -f Dockerfile.strapi .
+docker push <username>/strapi-db
+docker push <username>/strapi-front
+docker push <username>/strapi-back
+```
+
+## Run and deploy
+Now that you have containers with all of your code and all your data, you are ready to deploy these containers somewhere.
+
+### Docker
+If you want to run this application, as it would look like in production, you can start all of your containers.
+
+The commands to start the containers are similar to those you used earlier in development mode but with the mounted volumes and without the environment variables. The source code and environment variables were taken care of in the Dockerfile. Also note how we are adding an environment variable in the command to start the front-end to specify where is the Strapi API located.
+
+```
+docker run --rm -d --name strapi-db --network=strapi <username>/strapi-db
+docker run --rm -d --name strapi -p 1337:1337 --network=strapi <username>/strapi-back
+docker run --rm -d --name strapi-front -p 8080:80 -e BASE_URL=http://localhost:1337 <username>strapi-front
+```
+
+### Docker-compose
+If you want to share all of this with anyone else, you could provide them with a `docker-compose.yaml` file. This is a tool to manage multiple containers at once without the need for multiple bash commands. 
+
+```
+version: '3'
+services:
+  strapi-db:
+    image: <username>/strapi-db
+    networks:
+      - strapi
+  strapi-back:
+    image: <username>/strapi-back
+    ports:
+      - '1337:1337'
+    networks:
+      - strapi
+  strapi-front:
+    image: <username>/strapi-front
+    ports: 
+      - '8080:80'
+    environment:
+      BASE_URL: http://localhost:1337
+networks:
+  strapi:
+```
+
+### Kubernetes
+
