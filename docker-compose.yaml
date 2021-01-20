@@ -1,26 +1,20 @@
 version: '3'
 services:
-  strapi:
-    image: strapi/strapi
-    environment:
-      DATABASE_CLIENT: postgres
-      DATABASE_NAME: strapi
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_USERNAME: strapi
-      DATABASE_PASSWORD: strapi
-    volumes:
-      - ./app:/srv/app
+  strapi-db:
+    image: joellord/strapi-db
+    networks:
+      - strapi
+  strapi-back:
+    image: joellord/strapi-back
     ports:
       - '1337:1337'
-    depends_on:
-      - postgres
-
-  postgres:
-    image: postgres
+    networks:
+      - strapi
+  strapi-front:
+    image: joellord/strapi-front
+    ports: 
+      - '8080:80'
     environment:
-      POSTGRES_DB: strapi
-      POSTGRES_USER: strapi
-      POSTGRES_PASSWORD: strapi
-    volumes:
-      - ./data:/var/lib/postgresql/data
+      BASE_URL: http://localhost:1337
+networks:
+  strapi:

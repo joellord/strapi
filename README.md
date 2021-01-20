@@ -135,7 +135,7 @@ Similar to what was done for the database, you will need to create a `Dockefile.
 
 To do so, start from the strapi base image `FROM strapi/strapi`. Change the working directory to `/src/app` and copy all the local files into the container. Next, expose the port 1337 and set all your environment variables. Don't forget to add an environment variable for `NODE_ENV=production`. Finally, execture the `npm run build` to build all the production resources and use the `ENTRYPOINT` command to start the back-end when the container is started. 
 
-_Dockerfile.strapi_
+_Dockerfile.back_
 ```
 FROM strapi/strapi
 WORKDIR /srv/app
@@ -186,7 +186,7 @@ Now that you have all your Dockerfiles ready, you can build those containers and
 ```
 docker build -t <username>/strapi-db -f Dockerfile.db .
 docker build -t <username>/strapi-front -f Dockerfile.front .
-docker build -t <username>/strapi-back -f Dockerfile.strapi .
+docker build -t <username>/strapi-back -f Dockerfile.back .
 docker push <username>/strapi-db
 docker push <username>/strapi-front
 docker push <username>/strapi-back
