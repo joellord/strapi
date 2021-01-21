@@ -192,7 +192,7 @@ docker push <username>/strapi-front
 docker push <username>/strapi-back
 ```
 
-## Run and deploy
+## Package and Run
 Now that you have containers with all of your code and all your data, you are ready to deploy these containers somewhere.
 
 ### Docker
@@ -232,5 +232,186 @@ networks:
   strapi:
 ```
 
-### Kubernetes
+## Deploy
+Once you have created all of your containers, you can  deploy the application into a Kubernetes cluster. To do so, you will need to use some YAML files to create all the necessary assets. For more details on what each one of these assets, you can check out [Kubernetes By Example](http://kubernetesbyexample.com).
 
+### Minikube and CRC
+To test out the deployment, you can use a smaller version of Kubernetes or OpenShift that can run locally on your own machine. For the following examples, I've used [Minikube](https://kubernetes.io/docs/tutorials/hello-minikube/) and [CRC](https://developers.redhat.com/products/codeready-containers/overview).
+
+### Kubernetes
+[Persistent Volumes](https://kubernetesbyexample.com/pv/) and Persistent Volume Claims setup tend to vary from one cloud provider to another. For this reason, the database in this example will not persist data. For more information on how to persist data, look at the documentation on your cloud provider.
+
+For the database, we will need to create a [Deployment](https://kubernetesbyexample.com/deployments/). To do so, create a YAML file that will describe your deployment. You should give it a name and in the spec, you will create a template for the pods. Those pods will have a single container which will be the ones that you've pushed to your registry.
+
+_deploy-db.yaml_
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strapi-db
+spec:
+  selector:
+    matchLabels:
+      component: db
+  template:
+    metadata:
+      labels:
+        component: db
+    spec:
+      containers:
+      - name: strapi-db
+        image: joellord/strapi-db
+```
+
+Once you have your file, you can apply it to your cluster using `kubectl`.
+
+```
+kubectl apply -f ./deploy-db.yaml
+```
+
+In order for your back-end to be able to find those pods inside the cluster, you will need to create a [Service](https://kubernetesbyexample.com/services/) to expose this pod. You will be using the defaults here so you can use `kubectl` to create this service.
+
+```
+kubectl expose deployment strapi-db --port 5432
+```
+
+You can also create your deployments for the back-end and the front-end portions of your application. For the Strapi back-end, it will be the same as the database deployment apart from the name, label and container image.
+
+_deploy-back.yaml_
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strapi-back
+spec:
+  selector:
+    matchLabels:
+      app: strapi
+      component: back
+  template:
+    metadata:
+      labels:
+        app: strapi
+        component: back
+    spec:
+      containers:
+      - name: strapi-back
+        image: joellord/strapi-back
+```
+
+For the front-end, it uses a similar structure but you will also need to set the environment variable for the BASE_URL of the back-end. For now, you can set the value of that environment variable to `/api`. You will expose that route in a future step. Finally, you'll also need to expose the container port 80 so that this container is eventually available to the outside world.
+
+_deploy-front.yaml_
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strapi-front
+spec:
+  selector:
+    matchLabels:
+      component: front
+  template:
+    metadata:
+      labels:
+        component: front
+    spec:
+      containers:
+      - name: front
+        image: joellord/strapi-front
+        ports:
+          - containerPort: 80
+        env:
+          - name: BASE_URL
+            value: /api
+```
+
+Now that your deployment files are created, you can apply them to your cluster and create the services for each one of them.
+
+```
+kubectl apply -f ./deploy-back.yaml
+kubectl apply -f ./deploy-front.yaml
+kubectl expose deployment strapi-back --port 1337
+kubectl expose deployment strapi-front --port 80
+```
+
+Everything is now running inside your cluster. The only thing you need now is a way to expose the front-end and back-end services to the outside world. To do so, you will need to use an [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/).
+
+The ingress you will create here will expose the front-end as the default service to direct the traffic to. That means that any incoming request to your cluster will go the the front-end by default.
+
+You will also add a rule that will redirect any traffic to `/api/*` to the back-end service. The request will then be rewritten when sent to that service to remove the `/api` part of the URL. That is done with the nginx annotation in the metadata.
+
+_ingress.yaml_
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+        - path: /api(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: strapi-back
+              port:
+                number: 1337
+        - path: /()(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: strapi-front
+              port:
+                number: 80
+```
+
+Go ahead and apply this file to your cluster. If you are using `minikube` and you've never use ingresses before, you might need to enable the add-on.
+
+```
+# For minikube users
+minikube addons enable ingress
+
+kubectl apply -f ./ingress.yaml
+```
+
+You now have everything needed to run your Strapi application in a Kubernetes cluster. Point your browser to the cluster URL and you should see the full application running in your cluster. If you're using minikube, you can use the command `minikube ip` to get the address of your cluster.
+
+### OpenShift
+If you are using [OpenShift](http://openshift.com), it can be even easier to deploy your application. The CLI tool `oc` that you use to manage your cluster has an option to create a deployment directly from an image. To deploy your application, you can use:
+
+```
+oc new-app joellord/strapi-db
+oc new-app joellord/strapi-back
+oc new-app joellord/strapi-front
+```
+
+Next, you'll want to expose those applications to the outside world. Once again, OpenShift has a neat object called a Route which can also be created from the CLI. Use the `oc expose` command to expose the back-end and front-end to the outside world.
+
+```
+oc expose service strapi-back
+oc expose service strapi-front
+```
+
+Now that your back-end is expose, you will need to set the environment variable in your front end to the back-end route. First, start by getting the public route for the Strapi API:
+
+```
+oc get routes
+```
+
+You should see all the routes that you created. You can store the route for the back end in a variable and then set it as an environment variable using `oc set env`:
+
+```
+export BACKEND_ROUTE=$(oc get routes | grep strapi-back | awk '{print $2}')
+oc set env deployment/strapi-front BASE_URL=$BACKEND_ROUTE
+```
+
+You can now access your Strapi application using the route for the strapi-front service.
+
+## Summary
+When you are ready to put your Strapi application in production, the first step will be to containerize your whole setup. Once you have that done, you can deploy those containers in Kubernetes. You also saw in this post how easy it can be to deploy to OpenShift.
+
+If you want to try this out in a live OpenShift cluster, check out the [Developer Sandbox](https://developers.redhat.com/developer-sandbox) which will give you an OpenShift cluster for a 14 days period so you can experiment with your own applications.

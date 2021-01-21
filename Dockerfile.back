@@ -1,6 +1,6 @@
 FROM strapi/strapi
 WORKDIR /srv/app
-COPY ./app .
+COPY ./app ./
 EXPOSE 1337
 ENV NODE_ENV=production
 ENV DATABASE_CLIENT=postgres 

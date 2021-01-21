@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strapi-front
+spec:
+  selector:
+    matchLabels:
+      component: front
+  template:
+    metadata:
+      labels:
+        component: front
+    spec:
+      containers:
+      - name: front
+        image: joellord/strapi-front
+        ports:
+          - containerPort: 80
+        env:
+          - name: BASE_URL
+            value: /api
