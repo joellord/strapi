@@ -43,7 +43,7 @@ Once you see a message saying that your Strapi server is strated, you can go to 
 
 Once your administrator is created, go ahead a create a new content-type and make is publicly available. You can find a full tutorial on how to do so on the [Strapi website](https://www.youtube.com/watch?v=VC9X9O5OFyc)
 
-For some content that will work with the next step, you can create a *Content Type* for _Posts_. It will have four fields: _title_, _author_ (a relationship to Users), _published date_ and _content_.
+For some content that will work with the next step, you can create a *Content Type* for _Posts_. It will have four fields: _title_, _author_ (a relationship to Users), _publish\_date_ and _content_.
 
 If you want to stop the logs in your console, use `Ctrl-C`.
 
@@ -58,8 +58,9 @@ docker run --rm -d --name strapi-front -p 8888:80 -v $(pwd)/front:/usr/share/ngi
 
 Now go ahead and create your front-end application. You could use a React, VueJS or Angular application here but for the sake of this demo, it will be a simple HTML file. This file will do a `fetch` from the Strapi API to download the data and then create the necessary elements on the page using some JavaScript.
 
-The HTML page will have a single `div` where the content will be displayed.
+The HTML page will have a single `div` where the content will be displayed. You can creat his index.html file in the /front folder.
 
+_front/index.html_
 ```
 <body>
   <div id="content"></div>
@@ -73,8 +74,9 @@ Inside the index.html:
 <script type="text/javascript" src="config.js">
 ```
 
-The config.js file should create a global constant with the configuration.
+The front/config.js file should create a global constant with the configuration.
 
+_front/config.js_
 ```
 const config = {
   BASE_URL: "http://localhost:8080"
@@ -98,7 +100,7 @@ window.addEventListener("DOMContentLoaded", e => {
       let title = document.createElement("h2");
       title.innerText = postData.title;
       let author = document.createElement("h3");
-      author.innerText = `${postData.admin_user.firstname} ${postData.admin_user.lastname} -- ${postData.publish_date}`;
+      author.innerText = `${postData.author.firstname} ${postData.author.lastname} -- ${postData.publish_date}`;
       let content = document.createElement("div");
       content.innerText = postData.content;
       post.appendChild(title);
@@ -131,7 +133,7 @@ ENV POSTGRES_PASSWORD=strapi
 ```
 
 ### Strapi back-end
-Similar to what was done for the database, you will need to create a `Dockefile.strapi` to build your container.
+Similar to what was done for the database, you will need to create a `Dockefile.back` to build your container.
 
 To do so, start from the strapi base image `FROM strapi/strapi`. Change the working directory to `/src/app` and copy all the local files into the container. Next, expose the port 1337 and set all your environment variables. Don't forget to add an environment variable for `NODE_ENV=production`. Finally, execture the `npm run build` to build all the production resources and use the `ENTRYPOINT` command to start the back-end when the container is started. 
 
