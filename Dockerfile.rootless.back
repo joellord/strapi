@@ -1,25 +1,17 @@
-FROM node:14
-# WORKDIR /srv/app
-# COPY --chown=node:node ./app/ /srv/app/
-# COPY --chown=1000:1000 ./app/ /srv/app/
-# COPY --chown=1000:1000 ./app/package.json /src/app
+FROM strapi/base
 WORKDIR /srv/app
-COPY --chown=1000:1000 ./app ./
-# RUN chown -R node:node /srv/app
-# EXPOSE 1337
-ENV NODE_ENV=production
-ENV DATABASE_CLIENT=postgres 
+COPY --chown=1000:1000 ./app/package.json ./
+COPY --chown=1000:1000 ./app/yarn.lock ./
+USER 1000
+RUN yarn install
+COPY --chown=1000:1000 ./app .
+ENV NODE_ENV production
+ENV DATABASE_CLIENT=mysql 
 ENV DATABASE_NAME=strapi
 ENV DATABASE_HOST=strapi-db
-ENV DATABASE_PORT=5432
+ENV DATABASE_PORT=3306
 ENV DATABASE_USERNAME=strapi
 ENV DATABASE_PASSWORD=strapi
-
-USER 1000
-# CMD npm install && npm run build && npm start
-RUN npm install
-RUN npm run build
-
+RUN yarn build
 EXPOSE 1337
-# USER node
-ENTRYPOINT npm start
+CMD ["yarn", "start"]

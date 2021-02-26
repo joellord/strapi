@@ -16,12 +16,12 @@ mkdir ./data && mkdir ./app && mkdir ./front
 ```
 
 ### Database container
-The first thing that will be needed to start a Strapi instance is a database to persist your data. In this example, we will use a Postgres DB server running inside a container. This way, there is no need to go through the process of installing Postgres.
+The first thing that will be needed to start a Strapi instance is a database to persist your data. In this example, we will use a MySQL DB server running inside a container. This way, there is no need to go through the process of installing MySQL.
 
 To run the server, you can use the `docker run` command with the `-d` argument so that it runs in the background. You can also name this container with the `--name` parameter. You will also need to specify a folder that will contain all of the data so that it can be reused next time you start the server. This is done with the `-v` parameter. Finally you will need to set up a few environment variables with `-e` to configure the database. Your command to start the container should look like this. Make sure to also use the `--network` parameter to connect this container to the network created earlier.
 
 ```
-docker run --rm -d --name strapi-db -v $(pwd)/data:/var/lib/postgresql/data:z --network=strapi -e POSTGRES_DB=strapi -e POSTGRES_USER=strapi -e POSTGRES_PASSWORD=strapi postgres
+docker run --rm -d --name strapi-db -v $(pwd)/data:/var/lib/mysql:z --network=strapi -e MYSQL_DATABASE=strapi -e MYSQL_USER=strapi -e MYSQL_PASSWORD=strapi -e MYSQL_ROOT_PASSWORD=strapi-admin mysql:5.7
 ```
 
 After you executed this command, you can try a `docker ps` to validate that the container is started.
@@ -30,7 +30,7 @@ After you executed this command, you can try a `docker ps` to validate that the 
 Now that a database is configured, you can start your strapi instance. Once again, this will all run from a container. This time, you will use the `strapi/strapi` base image. You should still use `-d` to run it in the background and `--name` to name your container. Make sure to also add this container to the same network as the database. You should also map your local `/app` folder to `/srv/app` using the `-v` parameter so you can persist the files created by strapi using a local folder on your machine. Map a port on you operating system to access port 1337 inside the container. I'm using port 8080 so the address to connect to the strapi admin console will be `localhost:8080`. Finally, configure strapi to use the database you started in the previous step using environment variables.
 
 ```
-docker run --rm -d --name strapi-dev -p 8080:1337 -v $(pwd)/app:/srv/app:z --network=strapi -e DATABASE_CLIENT=postgres -e DATABASE_NAME=strapi -e DATABASE_HOST=strapi-db -e DATABASE_PORT=5432 -e DATABASE_USERNAME=strapi -e DATABASE_PASSWORD=strapi strapi/strapi
+docker run --rm -d --name strapi-dev -p 8080:1337 -v $(pwd)/app:/srv/app:z --network=strapi -e DATABASE_CLIENT=mysql -e DATABASE_NAME=strapi -e DATABASE_HOST=strapi-db -e DATABASE_PORT=3306 -e DATABASE_USERNAME=strapi -e DATABASE_PASSWORD=strapi strapi/strapi
 ```
 
 If Strapi can't find any files in the local file sytem that you mapped, it will automatically create a new instance of a Strapi server. This can take a few minutes. To keep an eye on the status of the application creation, you can use `docker logs`
@@ -39,13 +39,13 @@ If Strapi can't find any files in the local file sytem that you mapped, it will 
 docker logs -f strapi-dev
 ```
 
-Once you see a message saying that your Strapi server is strated, you can go to [http://localhost:8080](http://localhost:8080) to create you admin user.
+If you want to stop the logs in your console, use `Ctrl-C`.
 
-Once your administrator is created, go ahead a create a new content-type and make is publicly available. You can find a full tutorial on how to do so on the [Strapi website](https://www.youtube.com/watch?v=VC9X9O5OFyc)
+Once you see a message saying that your Strapi server is started, you can go to [http://localhost:8080/admin](http://localhost:8080/admin) to create your admin user.
+
+After you created your administrator, go ahead a create a new content-type and make is publicly available. You can find a full tutorial on how to do so on the [Strapi website](https://www.youtube.com/watch?v=VC9X9O5OFyc)
 
 For some content that will work with the next step, you can create a *Content Type* for _Posts_. It will have four fields: _title_, _author_ (a relationship to Users), _publish\_date_ and _content_.
-
-If you want to stop the logs in your console, use `Ctrl-C`.
 
 ### Front-end
 Next up, you will create a front end. This UI will be composed of a simple HTML file that fetches the data from the Strapi API and displays them on the page.
@@ -120,42 +120,43 @@ Once you are ready to deploy your application, you will need to create your own 
 For each container, you will need to create a Dockerfile. Those files will be used to create your containers with the actual content and you will then be able to deploy those containers to Kubernetes.
 
 ### Database
-If you do not already have a database in production, you will need one seeded with the current content. To do so, create a `Dockerfile.db` file. This new image will be based on postgres so you can start with a `FROM postgres` command. Then change the working directory to `/var/lib/postgresql/data` and all the current data from your local file system into the container with `COPY ./data .`. Finally, you will need to set the environment variables for the database name, user and password.
+For your database, there is a good chance that you already have one in production and that you won't want to overwrite the content. For this reason, the default MySQL image will also be used in production. If you want to import the SQL content later on though, you can use Docker to run a `mysqldump` command on your database.
 
-_Dockerfile.db_
 ```
-FROM postgres
-WORKDIR /var/lib/postgresql/data
-COPY ./data .
-ENV POSTGRES_DB=strapi
-ENV POSTGRES_USER=strapi
-ENV POSTGRES_PASSWORD=strapi
+docker exec strapi-db /bin/bash -c 'mysqldump strapi -ustrapi -pstrapi' | tee strapi-db.sql
 ```
+
+NOTE: This command uses `tee` to copy the content to a file. If you don't have that command, you can simply copy the output of the docker command into a file named `strapi-db.sql`.
+
+This file will be later imported in the production database if needed.
 
 ### Strapi back-end
-Similar to what was done for the database, you will need to create a `Dockefile.back` to build your container.
+For the back-end, you will need to create a `Dockefile.back` to build your container.
 
-To do so, start from the strapi base image `FROM strapi/strapi`. Change the working directory to `/src/app` and copy all the local files into the container. Next, expose the port 1337 and set all your environment variables. Don't forget to add an environment variable for `NODE_ENV=production`. Finally, execture the `npm run build` to build all the production resources and use the `ENTRYPOINT` command to start the back-end when the container is started. 
+To do so, start from the strapi base image `FROM strapi/base`. Change the working directory to `/opt/app` and copy all the local files into the container. Next, expose the port 1337 and set all your environment variables. Don't forget to add an environment variable for `NODE_ENV=production`. Finally, execture the `yarn build` to build all the production resources and use the `CMD` command to start the back-end when the container is started. For more information on how to use the Strapi base image, you can check out the documentation at https://github.com/strapi/strapi-docker#how-to-use-strapibase.
 
 _Dockerfile.back_
 ```
-FROM strapi/strapi
-WORKDIR /srv/app
+FROM strapi/base
+WORKDIR /opt/app
+COPY ./app/package.json ./
+COPY ./app/yarn.lock ./
+RUN yarn install
 COPY ./app .
-EXPOSE 1337
-ENV NODE_ENV=production
-ENV DATABASE_CLIENT=postgres 
+ENV NODE_ENV production
+ENV DATABASE_CLIENT=mysql 
 ENV DATABASE_NAME=strapi
 ENV DATABASE_HOST=strapi-db
-ENV DATABASE_PORT=5432
+ENV DATABASE_PORT=3306
 ENV DATABASE_USERNAME=strapi
 ENV DATABASE_PASSWORD=strapi
-RUN npm run build
-ENTRYPOINT npm start
+RUN yarn build
+EXPOSE 1337
+CMD ["yarn", "start"]
 ```
 
 ### Front-end
-For the front-end, you'll have to do a bit of bash scripting in order to be able to use an environment variable to specify the URL of your Strapi server. 
+For the front-end, you'll have to do a bit of bash scripting in order to be able to use an environment variable to specify the URL of your Strapi server. You can find out more about how to use environment variables with front-end containers at http://github.com/joellord/frontend-containers. 
 
 First, start with the `nginx:1.17` base image and change the working directory to `/usr/share/nginx/html`. In there, copy all the files from your local system into the container.
 
@@ -177,7 +178,7 @@ _Dockerfile.front_
 ```
 FROM nginx:1.17
 WORKDIR /usr/share/nginx/html
-COPY ./front/*.* .
+COPY ./front/*.* ./
 RUN sed s/BASE_URL\:\ \"[a-zA-Z0-9:\/]*\"/BASE_URL\:\ \"\$BASE_URL\"/g config.js > config.new.js && mv config.new.js config.js
 ENTRYPOINT cat config.js |  envsubst | tee config.new.js && mv config.new.js config.js && nginx -g 'daemon off;'
 ```
@@ -186,12 +187,10 @@ ENTRYPOINT cat config.js |  envsubst | tee config.new.js && mv config.new.js con
 Now that you have all your Dockerfiles ready, you can build those containers and push them to your favourite image registry. Don't forget to change the name of your images to use your username for that registry.
 
 ```
-docker build -t <username>/strapi-db -f Dockerfile.db .
-docker build -t <username>/strapi-front -f Dockerfile.front .
-docker build -t <username>/strapi-back -f Dockerfile.back .
-docker push <username>/strapi-db
-docker push <username>/strapi-front
-docker push <username>/strapi-back
+docker build -t $DOCKER_USERNAME/strapi-front -f Dockerfile.front .
+docker build -t $DOCKER_USERNAME/strapi-back -f Dockerfile.back .
+docker push $DOCKER_USERNAME/strapi-front
+docker push $DOCKER_USERNAME/strapi-back
 ```
 
 ## Package and Run
@@ -203,9 +202,9 @@ If you want to run this application, as it would look like in production, you ca
 The commands to start the containers are similar to those you used earlier in development mode but with the mounted volumes and without the environment variables. The source code and environment variables were taken care of in the Dockerfile. Also note how we are adding an environment variable in the command to start the front-end to specify where is the Strapi API located.
 
 ```
-docker run --rm -d --name strapi-db --network=strapi <username>/strapi-db
-docker run --rm -d --name strapi -p 1337:1337 --network=strapi <username>/strapi-back
-docker run --rm -d --name strapi-front -p 8080:80 -e BASE_URL=http://localhost:1337 <username>strapi-front
+docker run --rm -d --name strapi-db -v $(pwd)/data:/var/lib/mysql:z --network=strapi -e MYSQL_DATABASE=strapi -e MYSQL_USER=strapi -e MYSQL_PASSWORD=strapi -e MYSQL_ROOT_PASSWORD=strapi-admin mysql:5.7
+docker run --rm -d --name strapi -p 1337:1337 --network=strapi $DOCKER_USERNAME/strapi-back
+docker run --rm -d --name strapi-front -p 8080:80 -e BASE_URL=http://localhost:1337 $DOCKER_USERNAME/strapi-front
 ```
 
 ### Docker-compose
@@ -215,17 +214,19 @@ If you want to share all of this with anyone else, you could provide them with a
 version: '3'
 services:
   strapi-db:
-    image: <username>/strapi-db
+    image: mysql:5.7
+    volumes:
+      - ./data:/var/lib/mysql
     networks:
       - strapi
   strapi-back:
-    image: <username>/strapi-back
+    image: $DOCKER_USERNAME/strapi-back
     ports:
       - '1337:1337'
     networks:
       - strapi
   strapi-front:
-    image: <username>/strapi-front
+    image: $DOCKER_USERNAME/strapi-front
     ports: 
       - '8080:80'
     environment:
@@ -237,8 +238,8 @@ networks:
 ## Deploy
 Once you have created all of your containers, you can  deploy the application into a Kubernetes cluster. To do so, you will need to use some YAML files to create all the necessary assets. For more details on what each one of these assets, you can check out [Kubernetes By Example](http://kubernetesbyexample.com).
 
-### Minikube and CRC
-To test out the deployment, you can use a smaller version of Kubernetes or OpenShift that can run locally on your own machine. For the following examples, I've used [Minikube](https://kubernetes.io/docs/tutorials/hello-minikube/) and [CRC](https://developers.redhat.com/products/codeready-containers/overview).
+### Minikube
+To test out the deployment, you can use a smaller version of Kubernetes or OpenShift that can run locally on your own machine. For the following examples, I've used [Minikube](https://kubernetes.io/docs/tutorials/hello-minikube/).
 
 ### Kubernetes
 [Persistent Volumes](https://kubernetesbyexample.com/pv/) and Persistent Volume Claims setup tend to vary from one cloud provider to another. For this reason, the database in this example will not persist data. For more information on how to persist data, look at the documentation on your cloud provider.
@@ -262,7 +263,16 @@ spec:
     spec:
       containers:
       - name: strapi-db
-        image: joellord/strapi-db
+        image: mysql:5.7
+        env: 
+          - name: MYSQL_DATABASE
+            value: strapi 
+          - name: MYSQL_USER
+            value: strapi 
+          - name: MYSQL_PASSWORD
+            value: strapi 
+          - name: MYSQL_ROOT_PASSWORD
+            value: strapi-admin
 ```
 
 Once you have your file, you can apply it to your cluster using `kubectl`.
@@ -274,7 +284,14 @@ kubectl apply -f ./deploy-db.yaml
 In order for your back-end to be able to find those pods inside the cluster, you will need to create a [Service](https://kubernetesbyexample.com/services/) to expose this pod. You will be using the defaults here so you can use `kubectl` to create this service.
 
 ```
-kubectl expose deployment strapi-db --port 5432
+kubectl expose deployment strapi-db --port 3306
+```
+
+If you want to import data from your development environment SQL, you can run the following commands. This will copy the .sql file to the pod and then run a MySQL command to run it in the database.
+
+```
+kubectl cp ./strapi-db.sql $(kubectl get pod -l component=db | awk 'NR>1 {print $1}'):/tmp/strapi-db.sql
+kubectl exec -t $(kubectl get pod -l component=db | awk 'NR>1 {print $1}') -- /bin/bash -c 'mysql strapi -ustrapi -pstrapi < /tmp/strapi-db.sql'
 ```
 
 You can also create your deployments for the back-end and the front-end portions of your application. For the Strapi back-end, it will be the same as the database deployment apart from the name, label and container image.
@@ -383,13 +400,19 @@ kubectl apply -f ./ingress.yaml
 You now have everything needed to run your Strapi application in a Kubernetes cluster. Point your browser to the cluster URL and you should see the full application running in your cluster. If you're using minikube, you can use the command `minikube ip` to get the address of your cluster.
 
 ### OpenShift
-If you are using [OpenShift](http://openshift.com), it can be even easier to deploy your application. The CLI tool `oc` that you use to manage your cluster has an option to create a deployment directly from an image. To deploy your application, you can use:
+If you are using [OpenShift](http://openshift.com), it can be even easier to deploy your application. 
+
+You can test it out with the [Developer Sandbox](https://developers.redhat.com/developer-sandbox), which gives you access to an OpenShift cluster for free for 14 days.
+
+The CLI tool `oc` that you use to manage your cluster has an option to create a deployment directly from an image. To deploy your application, you can use:
 
 ```
-oc new-app joellord/strapi-db
-oc new-app joellord/strapi-back
-oc new-app joellord/strapi-front
+oc new-app mysql:5.7 MYSQL_USER=strapi MYSQL_PASSWORD=strapi MYSQL_DATABASE=strapi -l component=db --name strapi-db
+oc new-app joellord/strapi-back-openshift --name strapi-back
+oc new-app joellord/strapi-front-openshift --name strapi-front
 ```
+
+NOTE: To run images on OpenShift, they need to run as non-root users. You can find out more about non-root images at https://github.com/joellord/frontend-containers. The Dockerfiles used for this project can be found in the git repository for this post under Dockerfile.rootless.back and Dockerfile.rootless.front.
 
 Next, you'll want to expose those applications to the outside world. Once again, OpenShift has a neat object called a Route which can also be created from the CLI. Use the `oc expose` command to expose the back-end and front-end to the outside world.
 
@@ -415,5 +438,3 @@ You can now access your Strapi application using the route for the strapi-front 
 
 ## Summary
 When you are ready to put your Strapi application in production, the first step will be to containerize your whole setup. Once you have that done, you can deploy those containers in Kubernetes. You also saw in this post how easy it can be to deploy to OpenShift.
-
-If you want to try this out in a live OpenShift cluster, check out the [Developer Sandbox](https://developers.redhat.com/developer-sandbox) which will give you an OpenShift cluster for a 14 days period so you can experiment with your own applications.

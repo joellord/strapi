@@ -1,7 +1,9 @@
 version: '3'
 services:
   strapi-db:
-    image: joellord/strapi-db
+    image: mysql:5.7
+    volumes:
+      - ./data:/var/lib/mysql
     networks:
       - strapi
   strapi-back:

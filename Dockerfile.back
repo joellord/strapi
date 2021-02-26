@@ -1,13 +1,16 @@
-FROM strapi/strapi
-WORKDIR /srv/app
-COPY ./app ./
-EXPOSE 1337
-ENV NODE_ENV=production
-ENV DATABASE_CLIENT=postgres 
+FROM strapi/base
+WORKDIR /opt/app
+COPY ./app/package.json ./
+COPY ./app/yarn.lock ./
+RUN yarn install
+COPY ./app .
+ENV NODE_ENV production
+ENV DATABASE_CLIENT=mysql 
 ENV DATABASE_NAME=strapi
 ENV DATABASE_HOST=strapi-db
-ENV DATABASE_PORT=5432
+ENV DATABASE_PORT=3306
 ENV DATABASE_USERNAME=strapi
 ENV DATABASE_PASSWORD=strapi
-RUN npm run build
-ENTRYPOINT npm start
+RUN yarn build
+EXPOSE 1337
+CMD ["yarn", "start"]

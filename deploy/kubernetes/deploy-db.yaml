@@ -13,4 +13,13 @@ spec:
     spec:
       containers:
       - name: strapi-db
-        image: joellord/strapi-db
+        image: mysql:5.7
+        env: 
+          - name: MYSQL_DATABASE
+            value: strapi 
+          - name: MYSQL_USER
+            value: strapi 
+          - name: MYSQL_PASSWORD
+            value: strapi 
+          - name: MYSQL_ROOT_PASSWORD
+            value: strapi-admin
