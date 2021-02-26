@@ -395,7 +395,7 @@ Next, you'll want to expose those applications to the outside world. Once again,
 
 ```
 oc expose service strapi-back
-oc expose service strapi-front
+oc expose service strapi-front --port=8080
 ```
 
 Now that your back-end is expose, you will need to set the environment variable in your front end to the back-end route. First, start by getting the public route for the Strapi API:
@@ -408,7 +408,7 @@ You should see all the routes that you created. You can store the route for the 
 
 ```
 export BACKEND_ROUTE=$(oc get routes | grep strapi-back | awk '{print $2}')
-oc set env deployment/strapi-front BASE_URL=$BACKEND_ROUTE
+oc set env deployment/strapi-front BASE_URL=http://$BACKEND_ROUTE
 ```
 
 You can now access your Strapi application using the route for the strapi-front service.
