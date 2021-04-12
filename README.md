@@ -414,6 +414,12 @@ oc new-app joellord/strapi-front-openshift --name strapi-front
 
 NOTE: To run images on OpenShift, they need to run as non-root users. You can find out more about non-root images at https://github.com/joellord/frontend-containers. The Dockerfiles used for this project can be found in the git repository for this post under Dockerfile.rootless.back and Dockerfile.rootless.front.
 
+Seed your database with the data that you exported earlier. This data should be in your current working directory and have the name `strapi-db.sql`.
+```
+oc exec -it $(oc get pods -l component=db | awk 'NR>1 {print $1}') -c strapi-db -- bash -c 'mysql -ustrapi -pstrapi strapi' < ./strapi-db.sql
+```
+
+
 Next, you'll want to expose those applications to the outside world. Once again, OpenShift has a neat object called a Route which you can also create from the CLI. Use the `oc expose` command to expose the back-end and front-end to the outside world.
 
 ```
